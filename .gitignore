@@ -1,3 +1,6 @@
+*.dSYM
+*.bin
 .vscode
-random_file.bin
 memorysort
+filedump
+tmp
