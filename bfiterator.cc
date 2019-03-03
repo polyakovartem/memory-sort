@@ -6,6 +6,7 @@
 BinaryFileIterator::BinaryFileIterator(const std::string &file_name): filename(file_name)
 {
     file_stream = std::make_shared<std::ifstream>(filename.c_str(), std::ios::in | std::ios::binary);
+    next();
 }
 
 BinaryFileIterator::BinaryFileIterator(const BinaryFileIterator &copy)
@@ -28,15 +29,22 @@ BinaryFileIterator::~BinaryFileIterator()
     }
 }
 
-bool BinaryFileIterator::next(uint32_t& data)
+bool BinaryFileIterator::next()
 {
     if (file_stream->fail()) {
         return false;
     }
 
-    file_stream->read(reinterpret_cast<char *>(&data), sizeof(data));
-    current = data;
+    file_stream->read(reinterpret_cast<char *>(&current), sizeof(current));
     return !file_stream->eof();
+}
+
+bool BinaryFileIterator::next(uint32_t& data)
+{
+    bool is_success = next();
+    data = current;
+
+    return is_success;
 }
 
 const uint32_t& BinaryFileIterator::top()
