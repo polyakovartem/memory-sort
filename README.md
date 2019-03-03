@@ -9,8 +9,6 @@ Binary file sort utility.
 * write each sorted chunk into temporary file
 * use external sort to create new sorted file
 
-Note: algorithm can we improved if data in file is unique
-
 ### requirements
 * g++ compiler with C++17 support
 

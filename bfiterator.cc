@@ -35,6 +35,7 @@ bool BinaryFileIterator::next()
         return false;
     }
 
+    // TODO add chache reading
     file_stream->read(reinterpret_cast<char *>(&current), sizeof(current));
     return !file_stream->eof();
 }

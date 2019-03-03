@@ -1,8 +1,8 @@
-#include <future>
 #include <fstream>
 #include <iostream>
 #include <sys/stat.h>
 #include <memory>
+#include <thread>
 #include <vector>
 
 #include "bfiterator.h"
@@ -11,23 +11,20 @@
  * read file by chunks
  * sort each chunk 
  * write each sorted chunk into temporary file
- * use "kind of" merge sort to create new sorted file
+ * use external merge sort to create new sorted file
+ * 
 */
 const size_t MAX_MEMORY = 256*1024*1024; // 256MB
-const size_t BUFFER_SZ = MAX_MEMORY/2;
+const size_t BUFFER_SZ = MAX_MEMORY/4;
 const size_t ITEMS_IN_BUFFER = BUFFER_SZ/sizeof(uint32_t);
-//const size_t CHUNK_SZ = 10*1024*1024; // 10MB
-//const size_t WORKERS_COUNT = MAX_MEMORY / CHUNK_SZ;
-//const size_t CHUNK_COUNT = CHUNK_SZ/sizeof(uint32_t);
 const size_t MULT = 4;
 const char* TMP_DIR = "tmp/";
-
-static size_t file_size = 0;
 
 bool verify_arguments(int argc, char** argv);
 bool verify_filesize(const std::string &filename);
 bool split_file_into_sorted_chunks(const std::string &filename);
 bool merge_sorted_files(const std::string &dst_file);
+
 
 int main(int argc, char** argv)
 {
@@ -40,10 +37,6 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // there is no point to try splitting file in multiple thread,
-    // as sequencial file access is in general faster than random access
-    // the only exception might be some SSD, but it will introduce unnecessary
-    // complexity
     if (!split_file_into_sorted_chunks(src_file)) {
         return 1;
     }
@@ -55,7 +48,7 @@ int main(int argc, char** argv)
     return 0;
 }
 
-bool pop_min_from_top(std::vector <std::shared_ptr<BinaryFileIterator>> &file_list,
+bool pop_min_item_from_top(std::vector <std::shared_ptr<BinaryFileIterator>> &file_list,
                       uint32_t &data)
 {
     auto min_it = file_list.begin();
@@ -90,42 +83,39 @@ bool merge_sorted_files(const std::string &dst_file)
 
     // merge files
     std::ofstream out_file(dst_file, std::ios::out | std::ios::binary);
-    // TODO load chunks from each file, sort and write
-    // Note: verify that chunk boundary does not contain the same number
-    // as the last item in chunk
     uint32_t data;
     while (tmp_files.size()) {
-        pop_min_from_top(tmp_files, data);
+        pop_min_item_from_top(tmp_files, data);
         out_file.write(reinterpret_cast<char *>(&data), sizeof(data));
     }
     out_file.close();
     return true;
 }
 
-bool dump_chunk_to_tmp_file(std::vector<uint32_t> &buffer)
+bool dump_chunk_to_tmp_file(std::vector<uint32_t> &&buffer)
 {
     static size_t file_idx = 0;
 
-    // dump buffer to temporary file
+    // dump buffer into temporary file
     std::string tmp_file_path = TMP_DIR+std::to_string(file_idx++);
     std::ofstream out_file(tmp_file_path, std::ios::out | std::ios::binary);
     if (out_file.fail()) {
         return true;
     }
 
-    for (auto it = buffer.begin(); it != buffer.end(); it++) {
-        uint32_t data = *it;
+    for (auto& item : buffer) {
+        uint32_t data = item;
         out_file.write(reinterpret_cast<char *>(&data), sizeof(data));
     }
     out_file.close();
+    buffer.clear();
     return true;
 }
 
 void sort_and_dump_chunk(std::vector<uint32_t> &&buffer)
 {
-    // sort the buffer
     std::sort(buffer.begin(), buffer.begin()+buffer.size());
-    dump_chunk_to_tmp_file(buffer);
+    dump_chunk_to_tmp_file(std::move(buffer));
 }
 
 bool get_file_chunk(std::ifstream &in_file, std::vector<uint32_t> &buffer,
@@ -144,22 +134,37 @@ bool get_file_chunk(std::ifstream &in_file, std::vector<uint32_t> &buffer,
     return true;
 }
 
+void schedule_sort(std::vector<uint32_t> &&buffer, std::vector<std::thread> &sorting_threads)
+{
+    sorting_threads.push_back(std::thread(sort_and_dump_chunk, std::move(buffer)));
+    if (sorting_threads.size() > 2) {
+        auto first_thread = sorting_threads.begin();
+        first_thread->join();
+        sorting_threads.erase(first_thread);
+    }
+}
+
 bool split_file_into_sorted_chunks(const std::string &filename)
 {
-    std::ifstream in_file(filename, std::ios::in | std::ios::binary );
+    std::ifstream in_file(filename, std::ios::in | std::ios::binary);
     if (in_file.fail()) {
       std::cerr << "unable to open file input file for reading" << std::endl;
       return false;
     }
     // copy all data into buffer
+    std::vector<std::thread> sorting_threads;
     while (true){
         std::vector<uint32_t> buffer;
+        buffer.reserve(ITEMS_IN_BUFFER);
         if (!get_file_chunk(in_file, buffer)) {
             break;
         }
-        std::async(std::launch::async, sort_and_dump_chunk, buffer);        
+        schedule_sort(std::move(buffer), sorting_threads);
     }
     in_file.close();
+    for (auto& th : sorting_threads) {
+        th.join();
+    }
 
     return true;
 }
@@ -186,8 +191,6 @@ bool verify_filesize(const std::string &filename)
             return false;
         }
     }
-
-    file_size = results.st_size;
     return true;
     
 }
