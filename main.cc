@@ -5,6 +5,7 @@
 #include <memory>
 #include <thread>
 #include <vector>
+#include <experimental/filesystem>
 
 #include "bfiterator.h"
 
@@ -19,7 +20,7 @@ const size_t MAX_MEMORY = 256*1024*1024; // 256MB
 const size_t BUFFER_SZ = MAX_MEMORY/4;
 const size_t ITEMS_IN_BUFFER = BUFFER_SZ/sizeof(uint32_t);
 const size_t MULT = 4;
-const char* TMP_DIR = "tmp/";
+const char* TMP_DIR = "/tmp/memorysort/";
 
 bool verify_arguments(int argc, char** argv);
 bool verify_filesize(const std::string &filename);
@@ -90,6 +91,7 @@ bool merge_sorted_files(const std::string &dst_file)
         out_file.write(reinterpret_cast<char *>(&data), sizeof(data));
     }
     out_file.close();
+    std::experimental::filesystem::remove_all(TMP_DIR);
     return true;
 }
 
@@ -152,6 +154,7 @@ bool split_file_into_sorted_chunks(const std::string &filename)
       std::cerr << "unable to open file input file for reading" << std::endl;
       return false;
     }
+    std::experimental::filesystem::create_directory(TMP_DIR);
     // copy all data into buffer
     std::vector<std::thread> sorting_threads;
     while (true){

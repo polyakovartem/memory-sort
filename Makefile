@@ -1,5 +1,5 @@
 memorysort: main.cc
-	g++ -g -W -Werror -pthread -std=c++17 -o memorysort main.cc bfiterator.cc
+	g++ -g -W -Werror -pthread -std=gnu++17 -o memorysort main.cc bfiterator.cc -lstdc++fs
 
 dump: file_dump.cc
 	g++ -g -W -Werror -std=c++17 -o filedump file_dump.cc
