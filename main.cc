@@ -191,7 +191,7 @@ bool verify_filesize(const std::string &filename)
 
     if (stat(filename.c_str(), &results) == 0) {
         if (results.st_size % MULT != 0) {
-            std::cerr << "file size cannot be devided by " << MULT << std::endl;
+            std::cerr << "error: file size cannot be devided by " << MULT << std::endl;
             return false;
         }
     }
